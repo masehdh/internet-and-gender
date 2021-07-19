@@ -244,22 +244,24 @@ afg_cor$region <- ifelse((afg$region == "Central/Kabul"),
                               6,ifelse((afg$region == "North West"), 
                               7,8)))))))
 corr_matrix <- cor(afg_cor)
-stargazer(corr_matrix, type="html",out="corr_matrix.htm")
+```
 
+```{r results='asis'}
+stargazer(corr_matrix, type="html",out="corr_matrix.htm")
 #Check for multicollinearity in the model
 vif <- car::vif(log_model_regions_years)
 stargazer(vif,type="html",out="vif.htm")
+```
 
+```{r}
 #Likelihood ratio test between just internet as IV and internet with controls, regions, and years as IVs.
 internet_only_log_model <- glm(formula = women_outside~internet, family="binomial",
           data = afg)
 
 log_likelihood_test <- lrtest(internet_only_log_model, log_model_regions_years)
+```
 
-#Wald test, is the z value for each variable and its significance Pr(>|z|)
-
-summary(log_model_regions_years)
-
+```{r}
 #Variable importance
 importance_of_variables <- varImp(log_model_regions_years)
 
@@ -272,14 +274,16 @@ pR2(log_model_regions_2016)
 pR2(log_model_regions_2017)
 pR2(log_model_regions_2018)
 pR2(log_model_regions_2019)
+```
 
+```{r results='asis'}
 #Output tests
 stargazer(log_model_regions_years, type="html",out = "wald_tests.htm")
 
 ```
 
 ### Set up stargazer chart for cross-model comparison
-```{r}
+```{r results='asis'}
 #Use mfx library to get marginal effects for pooled models
 log_model_margins <- logitmfx(log_model,afg,atmean = FALSE)
 log_model_regions_margins <- logitmfx(log_model_regions,afg,atmean = FALSE)
@@ -292,7 +296,9 @@ log_model_regions_2016_margins <- logitmfx(log_model_regions_2016,afg[afg$year==
 log_model_regions_2017_margins <- logitmfx(log_model_regions_2017,afg[afg$year==2017,],atmean = FALSE)
 log_model_regions_2018_margins <- logitmfx(log_model_regions_2018,afg[afg$year==2018,],atmean = FALSE)
 log_model_regions_2019_margins <- logitmfx(log_model_regions_2019,afg[afg$year==2019,],atmean = FALSE)
+```
 
+```{r results='asis'}
 #Replace default logistic model coefficients and standard errors with average marginal effects and their standard errors
 pooled_regressions <- stargazer(lin_model, log_model_margins$fit, lin_model_regions,log_model_regions_margins$fit, lin_model_regions_years, log_model_regions_years_margins$fit, coef = list(NULL,log_model_margins$mfxest[,1], NULL, log_model_regions_margins$mfxest[,1],NULL,log_model_regions_years_margins$mfxest[,1]),se = list(NULL,log_model_margins$mfxest[,2],NULL,log_model_regions_margins$mfxest[,2],NULL,log_model_regions_years_margins$mfxest[,2]), title="Regression comparison", type="html", column.labels=c("", "", "+regions", "+regions","+regions+years", "+regions+years"), digits=4,out = "pooled_regressions.htm")
 
@@ -300,7 +306,9 @@ pooled_regressions <- stargazer(lin_model, log_model_margins$fit, lin_model_regi
 yearly_linear_regressions <- stargazer(lin_model_regions_2014, lin_model_regions_2015, lin_model_regions_2016, lin_model_regions_2017,lin_model_regions_2018,lin_model_regions_2019, title="Yearly Linear Regression Comparison", type="html", column.labels=c("2014", "2015", "2016", "2017","2018", "2019"),digits=4,out = "yearly_linear_regressions.htm")
 
 yearly_log_regressions <- stargazer(log_model_regions_2014_margins$fit,log_model_regions_2015_margins$fit,log_model_regions_2016_margins$fit,log_model_regions_2017_margins$fit,log_model_regions_2018_margins$fit,log_model_regions_2019_margins$fit, coef = list(log_model_regions_2014_margins$mfxest[,1],log_model_regions_2015_margins$mfxest[,1], log_model_regions_2016_margins$mfxest[,1],log_model_regions_2017_margins$mfxest[,1],log_model_regions_2018_margins$mfxest[,1],log_model_regions_2019_margins$mfxest[,1]),se = list(log_model_regions_2014_margins$mfxest[,2],log_model_regions_2015_margins$mfxest[,2],log_model_regions_2016_margins$mfxest[,2],log_model_regions_2017_margins$mfxest[,2],log_model_regions_2018_margins$mfxest[,2],log_model_regions_2019_margins$mfxest[,2]), title="Yearly Logistic Regression Comparison", type="html", column.labels=c("2014", "2015", "2016", "2017","2018", "2019"),digits=4,out = "yearly_logged_regressions.htm")
+```
 
+```{r results='asis'}
 #Stargazer matrix for correlations
 correlation_matrix <- stargazer(corr_matrix, type="html", title="Correlation Matrix",digits=1,out = "correlation_matrix.htm")
 
@@ -326,7 +334,6 @@ summary(why_internet)
 
 #Crosstabs
 xtabs(~why1 + female,data=afg_qual)
-
 ```
 
 ### Alternative explanations
