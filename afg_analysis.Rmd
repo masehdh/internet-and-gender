@@ -1,0 +1,372 @@
+---
+title: "Mobile internet as a facilitator for gender attitude transformation in extremely fragile contexts: Afghanistan from 2014-2019"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+---
+
+```{r, global_options, include=FALSE}
+knitr::opts_chunk$set(message=FALSE, tidy.opts=list(width.cutoff=60), tidy=TRUE) 
+```
+
+### Initial setup of dataframe
+```{r}
+#Import libraries
+library(stargazer)
+library(caret)
+library(ggplot2)
+library(aod)
+library(car)
+library(lmtest)
+library(pscl)
+library(mfx)
+
+#Import the dataset
+afg <- readRDS(file = "C://Users//maseh//Documents//MRP//dataset_work//R-2019_data_and_codebook//2019_afghan_data_R.RDS")
+
+#Subset for 2014-2019 inclusive with IVs, DVs, and CVs
+afg <- subset(afg, m8 == 2014 | m8 == 2015 | m8 == 2016 | m8 == 2017 | m8 == 2018 | m8 == 2019, select = c("m1","m4","m8","z1","x16","method","method1","method2","m6b","x153f","z2","z13_1","x68"))
+
+#Rename column names from codenames
+colnames(afg) <- c("respondent_id_per_year","region","year", "female","direct_violence","method","method1","method2","urban","internet","age","monthly_income","women_outside")
+
+#Order by year and respondent_id_per_year
+afg <- afg[order(afg$year, afg$respondent_id_per_year),]
+
+#Create a column that indicates whether an observation was randomly sampled
+afg$random = NA
+afg$random = ifelse((afg$method == "Random route" & !is.na(afg$method)) | (afg$method1 == "Random Walk" & !is.na(afg$method1)) | (afg$method2 == "Random route" & !is.na(afg$method2)),TRUE,FALSE)
+
+#Subset the dataset to only include randomly sampled observations
+afg <- subset(afg, afg$random == TRUE, select = -random)
+
+#Log income. Note that this produces 42 "-infs", because 42 people reported 0 income and log(0)=-inf. So in this case, I give all the pre-logged values of 0 a value of 1, so it gives them a logged value of 0 rather than -inf.
+afg$monthly_income <- ifelse(afg$monthly_income == 0, 1,afg$monthly_income)
+afg$monthly_income <- log(afg$monthly_income)
+
+#Remove observations with refuseds and dont knows
+afg <- subset(afg,afg$women_outside != "refused" & afg$women_outside != "don't know" & afg$direct_violence != "refused" & afg$direct_violence != "don't know" & afg$internet != "Refused" & afg$internet != "Don't know",select = -c(method,method1,method2))
+
+#Drop empty factors 
+afg<-droplevels(afg)
+
+#Shorten the value inside dependent variable to allowed and not allowed
+afg$women_outside = ifelse(afg$women_outside == "women should be allowed to work outside the home",1,0)
+
+#Turn internet to (0) no internet use, (1) internet use
+afg$internet <- ifelse(afg$internet == "Yes",1,0)
+
+#Turn urban to (0) rural, (1) urban
+afg$urban = ifelse(afg$urban == "Urban",1,0)
+
+#Turn direct_violence to (0) no, (1) yes
+afg$direct_violence = ifelse(afg$direct_violence == "yes",1,0)
+
+#Turn female to (0) male, (1) female
+afg$female = ifelse(afg$female == "Female",1,0)
+
+#Make sure all categorical variables are factors
+afg$year <- factor(afg$year)
+afg$female <- factor(afg$female)
+afg$direct_violence <- factor(afg$direct_violence)
+afg$internet <- factor(afg$internet)
+afg$urban <- factor(afg$urban)
+afg$women_outside <- factor(afg$women_outside)
+```
+
+### Crosstabs on the data
+```{r}
+#Check for IV
+xtabs(~women_outside + internet, data = afg)
+xtabs(~internet + female, data = afg)
+xtabs(~women_outside+internet + region, data=afg)
+xtabs(~region+female,data=afg)
+
+length((afg$internet[afg$region=="Central/Kabul" & afg$internet==1]))/length(afg$internet[afg$region=="Central/Kabul"])
+
+length((afg$internet[afg$region=="Central/Highland" & afg$internet==1]))/length(afg$internet[afg$region=="Central/Highland"])
+
+length((afg$internet[afg$region=="North West" & afg$internet==1]))/length(afg$internet[afg$region=="North West"])
+
+length((afg$internet[afg$region=="North East" & afg$internet==1]))/length(afg$internet[afg$region=="North East"])
+
+length((afg$internet[afg$region=="East" & afg$internet==1]))/length(afg$internet[afg$region=="East"])
+
+length((afg$internet[afg$region=="West" & afg$internet==1]))/length(afg$internet[afg$region=="West"])
+
+length((afg$internet[afg$region=="South West" & afg$internet==1]))/length(afg$internet[afg$region=="South West"])
+
+length((afg$internet[afg$region=="South East" & afg$internet==1]))/length(afg$internet[afg$region=="South East"])
+
+#Check for controls
+xtabs(~women_outside + female, data = afg)
+
+xtabs(~women_outside + direct_violence, data = afg)
+
+xtabs(~women_outside + urban, data = afg)
+
+bucketized_age <- cut(x=afg$age,breaks=c(18,30,40,50,60,70,80,90))
+xtabs(~women_outside + bucketized_age, data = afg)
+
+bucketized_monthly_income <- cut(x=afg$monthly_income,breaks=c(0,3,6,9,12,15))
+
+xtabs(~women_outside + bucketized_monthly_income, data = afg)
+
+xtabs(~women_outside + region, data = afg)
+```
+### Logit regressions
+
+```{r}
+# Logit base model
+log_model <- glm(formula = women_outside~internet
+          + direct_violence + female + urban + age
+          + monthly_income, family="binomial",
+          data = afg)
+
+# Logit base model + regions
+log_model_regions <- glm(formula = women_outside~internet
+          + direct_violence + female + urban + age
+          + monthly_income + region, family="binomial",
+          data = afg)
+
+# Logit base model + years + regions
+log_model_regions_years <- glm(formula = women_outside~internet
+          + direct_violence + female + urban + age
+          + monthly_income + region + year, family="binomial",
+          data = afg)
+
+# Logit base model + regions year by year
+log_model_regions_2014 <- glm(formula = women_outside~internet
+          + direct_violence + female + urban + age
+          + monthly_income + region, family="binomial",
+          data = afg[afg$year==2014,])
+
+log_model_regions_2015 <- glm(formula = women_outside~internet
+          + direct_violence + female + urban + age
+          + monthly_income + region, family="binomial",
+          data = afg[afg$year==2015,])
+
+log_model_regions_2016 <- glm(formula = women_outside~internet
+          + direct_violence + female + urban + age
+          + monthly_income + region, family="binomial",
+          data = afg[afg$year==2016,])
+
+log_model_regions_2017 <- glm(formula = women_outside~internet
+          + direct_violence + female + urban + age
+          + monthly_income + region, family="binomial",
+          data = afg[afg$year==2017,])
+
+log_model_regions_2018 <- glm(formula = women_outside~internet
+          + direct_violence + female + urban + age
+          + monthly_income + region, family="binomial",
+          data = afg[afg$year==2018,])
+
+log_model_regions_2019 <- glm(formula = women_outside~internet
+          + direct_violence + female + urban + age
+          + monthly_income + region, family="binomial",
+          data = afg[afg$year==2019,])
+
+```
+
+### Linear models
+```{r}
+# Linear base model
+afg_lm <- afg
+afg_lm$women_outside <- as.numeric(afg_lm$women_outside)
+lin_model <- lm(formula = women_outside~internet
+          + direct_violence + female + urban + age
+          + monthly_income,
+          data = afg_lm)
+
+# Linear base model + regions
+lin_model_regions <- lm(formula = women_outside~internet
+          + direct_violence + female + urban + age
+          + monthly_income + region,
+          data = afg_lm)
+
+# Linear base model + years + regions
+lin_model_regions_years <- lm(formula = women_outside~internet
+          + direct_violence + female + urban + age
+          + monthly_income + region + year,
+          data = afg_lm)
+
+# Linear base model + regions year by year
+lin_model_regions_2014 <- lm(formula = women_outside~internet
+          + direct_violence + female + urban + age
+          + monthly_income + region,
+          data = afg_lm[afg_lm$year==2014,])
+
+lin_model_regions_2015 <- lm(formula = women_outside~internet
+          + direct_violence + female + urban + age
+          + monthly_income + region,
+          data = afg_lm[afg_lm$year==2015,])
+
+lin_model_regions_2016 <- lm(formula = women_outside~internet
+          + direct_violence + female + urban + age
+          + monthly_income + region,
+          data = afg_lm[afg_lm$year==2016,])
+
+lin_model_regions_2017 <- lm(formula = women_outside~internet
+          + direct_violence + female + urban + age
+          + monthly_income + region,
+          data = afg_lm[afg_lm$year==2017,])
+
+lin_model_regions_2018 <- lm(formula = women_outside~internet
+          + direct_violence + female + urban + age
+          + monthly_income + region,
+          data = afg_lm[afg_lm$year==2018,])
+
+lin_model_regions_2019 <- lm(formula = women_outside~internet
+          + direct_violence + female + urban + age
+          + monthly_income + region,
+          data = afg_lm[afg_lm$year==2019,])
+```
+
+### Diagnostics
+```{r}
+#Check for collinearity. Start by recasting variables as numeric
+afg_cor <- afg
+afg_cor <- subset(afg_cor,select = -c(respondent_id_per_year))
+afg_cor$year <- as.numeric(afg$year)
+afg_cor$female <- as.numeric(afg$female)
+afg_cor$direct_violence <- as.numeric(afg$direct_violence)
+afg_cor$internet <- as.numeric(afg$internet)
+afg_cor$urban <- as.numeric(afg$urban)
+afg_cor$women_outside <- as.numeric(afg$women_outside)
+afg_cor$region <- ifelse((afg$region == "Central/Kabul"), 
+                              1,ifelse((afg$region == "East"), 
+                              2,ifelse((afg$region == "South East"), 
+                              3,ifelse((afg$region == "South West"), 
+                              4,ifelse((afg$region == "West"), 
+                              5,ifelse((afg$region == "North East"), 
+                              6,ifelse((afg$region == "North West"), 
+                              7,8)))))))
+corr_matrix <- cor(afg_cor)
+stargazer(corr_matrix, type="html",out="corr_matrix.htm")
+
+#Check for multicollinearity in the model
+vif <- car::vif(log_model_regions_years)
+stargazer(vif,type="html",out="vif.htm")
+
+#Likelihood ratio test between just internet as IV and internet with controls, regions, and years as IVs.
+internet_only_log_model <- glm(formula = women_outside~internet, family="binomial",
+          data = afg)
+
+log_likelihood_test <- lrtest(internet_only_log_model, log_model_regions_years)
+
+#Wald test, is the z value for each variable and its significance Pr(>|z|)
+
+summary(log_model_regions_years)
+
+#Variable importance
+importance_of_variables <- varImp(log_model_regions_years)
+
+#Pseudo R-squared test used for goodness of fit
+pR2(log_model)
+pR2(log_model_regions)
+pR2(log_model_regions_2014)
+pR2(log_model_regions_2015)
+pR2(log_model_regions_2016)
+pR2(log_model_regions_2017)
+pR2(log_model_regions_2018)
+pR2(log_model_regions_2019)
+
+#Output tests
+stargazer(log_model_regions_years, type="html",out = "wald_tests.htm")
+
+```
+
+### Set up stargazer chart for cross-model comparison
+```{r}
+#Use mfx library to get marginal effects for pooled models
+log_model_margins <- logitmfx(log_model,afg,atmean = FALSE)
+log_model_regions_margins <- logitmfx(log_model_regions,afg,atmean = FALSE)
+log_model_regions_years_margins <- logitmfx(log_model_regions_years,afg,atmean = FALSE)
+
+#And again for yearly models
+log_model_regions_2014_margins <- logitmfx(log_model_regions_2014,afg[afg$year==2014,],atmean = FALSE)
+log_model_regions_2015_margins <- logitmfx(log_model_regions_2015,afg[afg$year==2015,],atmean = FALSE)
+log_model_regions_2016_margins <- logitmfx(log_model_regions_2016,afg[afg$year==2016,],atmean = FALSE)
+log_model_regions_2017_margins <- logitmfx(log_model_regions_2017,afg[afg$year==2017,],atmean = FALSE)
+log_model_regions_2018_margins <- logitmfx(log_model_regions_2018,afg[afg$year==2018,],atmean = FALSE)
+log_model_regions_2019_margins <- logitmfx(log_model_regions_2019,afg[afg$year==2019,],atmean = FALSE)
+
+#Replace default logistic model coefficients and standard errors with average marginal effects and their standard errors
+pooled_regressions <- stargazer(lin_model, log_model_margins$fit, lin_model_regions,log_model_regions_margins$fit, lin_model_regions_years, log_model_regions_years_margins$fit, coef = list(NULL,log_model_margins$mfxest[,1], NULL, log_model_regions_margins$mfxest[,1],NULL,log_model_regions_years_margins$mfxest[,1]),se = list(NULL,log_model_margins$mfxest[,2],NULL,log_model_regions_margins$mfxest[,2],NULL,log_model_regions_years_margins$mfxest[,2]), title="Regression comparison", type="html", column.labels=c("", "", "+regions", "+regions","+regions+years", "+regions+years"), digits=4,out = "pooled_regressions.htm")
+
+
+yearly_linear_regressions <- stargazer(lin_model_regions_2014, lin_model_regions_2015, lin_model_regions_2016, lin_model_regions_2017,lin_model_regions_2018,lin_model_regions_2019, title="Yearly Linear Regression Comparison", type="html", column.labels=c("2014", "2015", "2016", "2017","2018", "2019"),digits=4,out = "yearly_linear_regressions.htm")
+
+yearly_log_regressions <- stargazer(log_model_regions_2014_margins$fit,log_model_regions_2015_margins$fit,log_model_regions_2016_margins$fit,log_model_regions_2017_margins$fit,log_model_regions_2018_margins$fit,log_model_regions_2019_margins$fit, coef = list(log_model_regions_2014_margins$mfxest[,1],log_model_regions_2015_margins$mfxest[,1], log_model_regions_2016_margins$mfxest[,1],log_model_regions_2017_margins$mfxest[,1],log_model_regions_2018_margins$mfxest[,1],log_model_regions_2019_margins$mfxest[,1]),se = list(log_model_regions_2014_margins$mfxest[,2],log_model_regions_2015_margins$mfxest[,2],log_model_regions_2016_margins$mfxest[,2],log_model_regions_2017_margins$mfxest[,2],log_model_regions_2018_margins$mfxest[,2],log_model_regions_2019_margins$mfxest[,2]), title="Yearly Logistic Regression Comparison", type="html", column.labels=c("2014", "2015", "2016", "2017","2018", "2019"),digits=4,out = "yearly_logged_regressions.htm")
+
+#Stargazer matrix for correlations
+correlation_matrix <- stargazer(corr_matrix, type="html", title="Correlation Matrix",digits=1,out = "correlation_matrix.htm")
+
+```
+
+### Examine why respondents use the internet
+```{r}
+#Import the dataset
+afg_qual <- readRDS(file = "C://Users//maseh//Documents//MRP//dataset_work//R-2019_data_and_codebook//2019_afghan_data_R.RDS")
+
+#Subset for 2014-2019 inclusive with IVs, DVs, and CVs
+afg_qual <- subset(afg_qual, m8 == 2019, select = c("m1","m4","m8","z1","x16","m6b","x153f","z2","z13_1","x68","x446a","x446b"))
+
+#Rename column names from codenames
+colnames(afg_qual) <- c("respondent_id_per_year","region","year", "female","direct_violence","urban","internet","age","monthly_income","women_outside","why1","why2")
+
+#Order by year and respondent_id_per_year
+afg_qual <- afg_qual[order(afg_qual$respondent_id_per_year),]
+
+#Combine first and second mentions
+why_internet <- c(afg_qual$why1,afg_qual$why2) 
+summary(why_internet)
+
+#Crosstabs
+xtabs(~why1 + female,data=afg_qual)
+
+```
+
+### Alternative explanations
+```{r}
+#Import the dataset
+afg_married <- readRDS(file = "C://Users//maseh//Documents//MRP//dataset_work//R-2019_data_and_codebook//2019_afghan_data_R.RDS")
+
+#Subset for 2014-2019 inclusive with IVs, DVs, and CVs
+afg_married <- subset(afg_married, m8 == 2014 | m8 == 2015 | m8 == 2016 | m8 == 2017 | m8 == 2018 | m8 == 2019, select = c("m1","m4","m8","z1","x16","method","method1","method2","m6b","x153f","z2","z13_1","x68","x369","x370"))
+
+#Rename column names from codenames
+colnames(afg_married) <- c("respondent_id_per_year","region","year", "female","direct_violence","method","method1","method2","urban","internet","age","monthly_income","women_outside","woman_age_married","man_age_married")
+
+#Order by year and respondent_id_per_year
+afg_married <- afg_married[order(afg_married$year, afg_married$respondent_id_per_year),]
+
+#Create a column that indicates whether an observation was randomly sampled
+afg_married$random = NA
+afg_married$random = ifelse((afg_married$method == "Random route" & !is.na(afg_married$method)) | (afg_married$method1 == "Random Walk" & !is.na(afg_married$method1)) | (afg_married$method2 == "Random route" & !is.na(afg_married$method2)),TRUE,FALSE)
+
+#Subset the dataset to only include randomly sampled observations
+afg_married <- subset(afg_married, afg_married$random == TRUE, select = -random)
+
+#Clean up data
+afg_married$year <- as.factor(afg_married$year)
+afg_married <- subset(afg_married, afg_married$man_age_married < 55 & afg_married$woman_age_married < 40)
+
+#plot
+women_married_plot <- ggplot(afg_married, aes(year, woman_age_married))
+women_married_plot + geom_boxplot() +
+  theme_classic() +
+  labs(x = "Years", y = "Age of Marriage",
+       title = "Age that Women Should be Married 2014-2019") +
+  ylim(0,50)
+
+men_married_plot <- ggplot(afg_married, aes(year, man_age_married))
+men_married_plot + geom_boxplot() +
+  theme_classic() +
+  labs(x = "Years", y = "Age of Marriage",
+       title = "Age that Men Should be Married 2014-2019") +
+  ylim(0,50)
+```
+
