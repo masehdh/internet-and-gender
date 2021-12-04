@@ -13,7 +13,7 @@ install.packages(pscl)
 install.packages(mfx)
 ```
 
-Then, head over to the Asia Foundation’s website to get the _Survey of the Afghan People_ dataset, it's free for non-commercial purposes. Available at this [link](https://asiafoundation.org/where-we-work/afghanistan/survey/download-data-form/).
+Then, head over to the Asia Foundation’s website to get the _Survey of the Afghan People_ dataset, it's free for non-commercial purposes. The data is unfortunately unavailable due to the recent takeover, but a copy is available here(https://drive.google.com/drive/folders/1ifcY3xGGIFJ9QzRy_n9puCNnADckhsHS?usp=sharing)
 
 It probably goes without saying, but a common cause of frustration for researchers without a programming background is figuring out imports and file directories. The file path below will be different for you.
 ```
